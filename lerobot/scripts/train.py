@@ -52,6 +52,11 @@ from lerobot.configs import parser
 from lerobot.configs.train import TrainPipelineConfig
 from lerobot.scripts.eval import eval_policy
 
+# Monkey-patch to skip image check in DiffusionConfig [states based for now]
+from lerobot.common.policies.diffusion.configuration_diffusion import DiffusionConfig
+def _skip_image_check(self):     # monkey-patch validate_features
+    pass
+DiffusionConfig.validate_features = _skip_image_check
 
 def update_policy(
     train_metrics: MetricsTracker,

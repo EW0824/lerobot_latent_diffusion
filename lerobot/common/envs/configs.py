@@ -130,6 +130,7 @@ class XarmEnv(EnvConfig):
     features: dict[str, PolicyFeature] = field(
         default_factory=lambda: {
             "action": PolicyFeature(type=FeatureType.ACTION, shape=(4,)),
+            # "agent_pos": PolicyFeature(type=FeatureType.STATE, shape=(4,)),
             "pixels": PolicyFeature(type=FeatureType.VISUAL, shape=(84, 84, 3)),
         }
     )
