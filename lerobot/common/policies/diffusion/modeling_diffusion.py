@@ -43,7 +43,7 @@ from lerobot.common.policies.utils import (
     get_output_shape,
     populate_queues,
 )
-
+from lerobot.common.policies.action_vae import ActionVAE
 
 class DiffusionPolicy(PreTrainedPolicy):
     """
@@ -84,6 +84,28 @@ class DiffusionPolicy(PreTrainedPolicy):
         self.diffusion = DiffusionModel(config)
 
         self.reset()
+
+        ########
+        # Action VAE
+        ########
+
+        self.vae = ActionVAE(
+            act_dim = config.action_feature.shape[0],
+            latent_dim = config.latent_dim
+        )
+
+        self.vae.load_state_dict(torch.load(config.vae_ckpt))
+        self.vae.eval()
+
+        for p in self.vae.parameters():
+            p.requires_grad = False
+
+        # Update internal dims so UNET works on latent space
+        latent_dim = config.latent_dim
+        self.unet = DiffusionConditionalUnet1d(config, global_cond_dim=latent_dim * config.n_obs_steps)
+        self.unet.final_conv[-1] = nn.Conv1d(
+            config.down_dims[0], latent_dim, 1
+        )
 
     def get_optim_params(self) -> dict:
         return self.diffusion.parameters()
@@ -297,7 +319,15 @@ class DiffusionModel(nn.Module):
         # Extract `n_action_steps` steps worth of actions (from the current observation).
         start = n_obs_steps - 1
         end = start + self.config.n_action_steps
-        actions = actions[:, start:end]
+
+        ########
+        # VAE
+        ########
+        latents = actions[:, start:end]
+        actions = self.vae.decode(latents)
+        ########
+        # VAE
+        ########
 
         return actions
 
@@ -327,7 +357,14 @@ class DiffusionModel(nn.Module):
         global_cond = self._prepare_global_conditioning(batch)  # (B, global_cond_dim)
 
         # Forward diffusion.
-        trajectory = batch["action"]
+
+        ########
+        # VAE - encode action trajectory
+        ########
+        trajectory = self.vae.encode(batch["action"])
+        ########
+        # VAE
+        ########
         # Sample noise to add to the trajectory.
         eps = torch.randn(trajectory.shape, device=trajectory.device)
         # Sample a random noising timestep for each item in the batch.
