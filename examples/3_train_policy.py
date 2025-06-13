@@ -54,7 +54,6 @@ def main():
     # Policies are initialized with a configuration class, in this case `DiffusionConfig`. For this example,
     # we'll just use the defaults and so no arguments other than input/output features need to be passed.
     cfg = DiffusionConfig(input_features=input_features, output_features=output_features)
-
     # We can now instantiate our policy with this config and the dataset stats.
     policy = DiffusionPolicy(cfg, dataset_stats=dataset_metadata.stats)
     policy.train()

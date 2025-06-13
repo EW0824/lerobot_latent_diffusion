@@ -140,6 +140,13 @@ def train(cfg: TrainPipelineConfig):
         logging.info("Creating env")
         eval_env = make_env(cfg.env, n_envs=cfg.eval.batch_size, use_async_envs=cfg.eval.use_async_envs)
 
+    # Debug: Check if vae_ckpt exists in config
+    # print("Policy config type:", type(cfg.policy))
+    # print("Policy config attributes:", [attr for attr in dir(cfg.policy) if not attr.startswith('_')])
+    # print("Has vae_ckpt:", hasattr(cfg.policy, 'vae_ckpt'))
+
+    print("VAE checkpoint path: ", cfg.policy.vae_ckpt)
+
     logging.info("Creating policy")
     policy = make_policy(
         cfg=cfg.policy,
