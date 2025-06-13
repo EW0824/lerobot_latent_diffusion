@@ -148,6 +148,11 @@ class DiffusionConfig(PreTrainedConfig):
     # Inference
     num_inference_steps: int | None = None
 
+    # -------- Latent VAE --------
+    latent_dim: int = 2
+    vae_ckpt: str = "checkpoints/trained_beta_vae.pth"
+    # ----------------------------
+
     # Loss computation
     do_mask_loss_for_padding: bool = False
 

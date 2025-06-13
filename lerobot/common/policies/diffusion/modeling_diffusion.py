@@ -85,20 +85,66 @@ class DiffusionPolicy(PreTrainedPolicy):
 
         self.reset()
 
+        self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("mps")
+
+
         ########
         # Action VAE
         ########
 
         self.vae = ActionVAE(
-            act_dim = config.action_feature.shape[0],
+            input_dim = config.action_feature.shape[0],
             latent_dim = config.latent_dim
-        )
+        ).to(self.device)
 
-        self.vae.load_state_dict(torch.load(config.vae_ckpt))
+        self.diffusion.vae = self.vae # Also pass it to the diffusion model
+
+        # Load VAE checkpoint with proper state_dict handling
+        vae_state = torch.load(config.vae_ckpt, map_location=self.device)
+        state_dict = (vae_state['model_state_dict'] if 'model_state_dict' in vae_state
+                     else vae_state['model'] if 'model' in vae_state
+                     else vae_state['state_dict'] if 'state_dict' in vae_state
+                     else vae_state)
+        
+        # Check if the saved VAE has a different input dimension
+        first_layer_key = 'encoder_layers.0.0.weight'
+        if first_layer_key in state_dict:
+            saved_input_dim = state_dict[first_layer_key].shape[1]
+            current_input_dim = config.action_feature.shape[0]
+            print(f"Saved VAE input_dim: {saved_input_dim}")
+            print(f"Current action_dim: {current_input_dim}")
+            
+            if saved_input_dim != current_input_dim:
+                print(f"Warning: VAE was trained with input_dim={saved_input_dim} but current action_dim={current_input_dim}")
+                # Recreate VAE with correct dimensions
+                self.vae = ActionVAE(
+                    input_dim = saved_input_dim,
+                    latent_dim = config.latent_dim
+                ).to(self.device)
+        
+        self.vae.load_state_dict(state_dict)
         self.vae.eval()
+        print(f"Loaded VAE checkpoint from {config.vae_ckpt}")
+        print(f"VAE device: {next(self.vae.parameters()).device}")
+        print(f"VAE input_dim: {self.vae.input_dim}")
 
         for p in self.vae.parameters():
             p.requires_grad = False
+            
+        # Add projection layer if needed
+        if self.vae.input_dim != config.action_feature.shape[0]:
+            self.action_projection = nn.Linear(
+                config.action_feature.shape[0], 
+                self.vae.input_dim
+            ).to(self.device)
+            self.action_unprojection = nn.Linear(
+                self.vae.input_dim, 
+                config.action_feature.shape[0]
+            ).to(self.device)
+            print(f"Added projection layers: {config.action_feature.shape[0]} <-> {self.vae.input_dim}")
+        else:
+            self.action_projection = None
+            self.action_unprojection = None
 
         # Update internal dims so UNET works on latent space
         latent_dim = config.latent_dim
@@ -321,12 +367,14 @@ class DiffusionModel(nn.Module):
         end = start + self.config.n_action_steps
 
         ########
-        # VAE
+        # VAE: BEGIN
         ########
         latents = actions[:, start:end]
-        actions = self.vae.decode(latents)
+        latents_flat = latents.reshape(-1, latents.shape[-1])
+        decoded_flat = self.vae.decode(latents_flat)
+        actions = decoded_flat.view(latents.shape[0], latents.shape[1], -1)
         ########
-        # VAE
+        # VAE: END
         ########
 
         return actions
@@ -361,7 +409,10 @@ class DiffusionModel(nn.Module):
         ########
         # VAE - encode action trajectory
         ########
-        trajectory = self.vae.encode(batch["action"])
+        B, T, A = batch["action"].shape        # <-- B = batch-size,  T = horizon,  A = 2
+        actions_flat = batch["action"].reshape(B*T, A)
+        mu, _     = self.vae.encode(actions_flat)
+        trajectory = mu.view(B, T, -1)                                 # (B, T, latent_dim)
         ########
         # VAE
         ########
