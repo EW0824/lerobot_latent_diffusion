@@ -1,5 +1,5 @@
-# lerobot/common/policies/latent_vae.py
 import torch
+
 from torch import nn
 from torch.nn import functional as F
 from typing import List, Optional
@@ -9,14 +9,14 @@ class ActionVAE(nn.Module):
     num_iter = 0  # Global static variable to keep track of iterations
 
     def __init__(self,
-                 input_dim: int = 4,
-                 latent_dim: int = 2,
+                 input_dim: int = 2,
+                 latent_dim: int = 4,
                  hidden_dims: Optional[List[int]] = None,
                  beta: float = 4.0,
                  gamma: float = 1000.0,
                  max_capacity: float = 25.0,
                  Capacity_max_iter: int = int(1e5),
-                 loss_type: str = 'H',
+                 loss_type: str = 'B',
                  use_skip_connections: bool = True,  # Add skip connections for better gradients
                  dropout_rate: float = 0.1,  # Add dropout for regularization
                  **kwargs) -> None:
@@ -33,7 +33,7 @@ class ActionVAE(nn.Module):
 
         # Set default hidden dimensions if not provided
         if hidden_dims is None:
-            hidden_dims = [128, 64, 32]  # Better default for robotics
+            hidden_dims = [256, 128, 64]   # Better default for robotics
 
         # Build Encoder with skip connections
         self.encoder_layers = nn.ModuleList()
@@ -160,7 +160,9 @@ class ActionVAE(nn.Module):
 
         recons_loss =F.mse_loss(recons, input)
 
-        kld_loss = torch.mean(-0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), dim = 1), dim = 0)
+        #kld_loss = torch.mean(-0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), dim = 1), dim = 0)
+        kld_loss = torch.mean(-0.5 * torch.sum(1 + log_var - mu**2 - log_var.exp(), dim=1)) / mu.shape[1]
+
 
         if self.loss_type == 'H': # https://openreview.net/forum?id=Sy2fzU9gl
             loss = recons_loss + self.beta * kld_weight * kld_loss
